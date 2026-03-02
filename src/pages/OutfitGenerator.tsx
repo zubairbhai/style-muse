@@ -35,7 +35,18 @@ const OutfitGenerator = () => {
         body: { occasion, season, palette, vibe },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Check for rate limit or payment errors from the response
+        const errorBody = data || {};
+        if (errorBody.error === "Payment required") {
+          setOutfit({ text: "⚠️ **AI credits exhausted.** Your Lovable AI usage limit has been reached. Please add more credits in your workspace settings (Settings → Workspace → Usage) to continue generating outfits." });
+        } else if (errorBody.error === "Rate limit exceeded") {
+          setOutfit({ text: "⚠️ **Too many requests.** Please wait a moment and try again." });
+        } else {
+          throw error;
+        }
+        return;
+      }
       setOutfit({ text: data.text, imageUrl: data.imageUrl });
     } catch (e) {
       console.error(e);
