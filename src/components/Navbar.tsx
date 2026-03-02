@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Sparkles } from "lucide-react";
+import { Menu, X, Sparkles, User, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -10,6 +11,7 @@ const navItems = [
   { label: "AI Stylist", path: "/chat" },
   { label: "Generator", path: "/generator" },
   { label: "Analyzer", path: "/analyzer" },
+  { label: "Wardrobe", path: "/wardrobe" },
   { label: "Lookbook", path: "/lookbook" },
   { label: "Trends", path: "/trends" },
 ];
@@ -17,6 +19,7 @@ const navItems = [
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
@@ -41,6 +44,15 @@ const Navbar = () => {
               {item.label}
             </Link>
           ))}
+          {user ? (
+            <Link to="/profile" className="ml-2 p-2 rounded-full hover:bg-secondary transition-colors">
+              <User className="h-5 w-5 text-accent" />
+            </Link>
+          ) : (
+            <Button asChild size="sm" className="ml-2 bg-accent text-accent-foreground hover:bg-accent/90 rounded-full">
+              <Link to="/auth"><LogIn className="h-4 w-4 mr-1" /> Sign In</Link>
+            </Button>
+          )}
         </div>
 
         {/* Mobile toggle */}
@@ -78,6 +90,15 @@ const Navbar = () => {
                   {item.label}
                 </Link>
               ))}
+              {user ? (
+                <Link to="/profile" onClick={() => setOpen(false)} className="px-3 py-2 rounded-md text-sm font-medium text-accent">
+                  My Profile
+                </Link>
+              ) : (
+                <Link to="/auth" onClick={() => setOpen(false)} className="px-3 py-2 rounded-md text-sm font-medium text-accent">
+                  Sign In
+                </Link>
+              )}
             </div>
           </motion.div>
         )}
