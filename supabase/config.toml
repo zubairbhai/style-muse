@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.analyze-outfit]
 verify_jwt = false
+
+[functions.analyze-clothing]
+verify_jwt = false
+
+[functions.fetch-fashion-articles]
+verify_jwt = false
