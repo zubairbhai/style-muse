@@ -18,6 +18,7 @@ interface Outfit {
 }
 
 const OutfitGenerator = () => {
+  const [gender, setGender] = useState("");
   const [occasion, setOccasion] = useState("");
   const [season, setSeason] = useState("");
   const [palette, setPalette] = useState("");
@@ -26,13 +27,13 @@ const OutfitGenerator = () => {
   const [outfit, setOutfit] = useState<Outfit | null>(null);
 
   const generate = async () => {
-    if (!occasion || !season) return;
+    if (!gender || !occasion || !season) return;
     setLoading(true);
     setOutfit(null);
 
     try {
       const { data, error } = await supabase.functions.invoke("generate-outfit", {
-        body: { occasion, season, palette, vibe },
+        body: { occasion, season, palette, vibe, gender },
       });
 
       if (error) {
@@ -78,6 +79,25 @@ const OutfitGenerator = () => {
         </div>
 
         {/* Selectors */}
+        {/* Gender Toggle */}
+        <div className="flex justify-center gap-3 mb-6">
+          <Button
+            variant={gender === "female" ? "default" : "outline"}
+            onClick={() => setGender("female")}
+            className="rounded-full px-6"
+          >
+            👩 Female
+          </Button>
+          <Button
+            variant={gender === "male" ? "default" : "outline"}
+            onClick={() => setGender("male")}
+            className="rounded-full px-6"
+          >
+            👨 Male
+          </Button>
+        </div>
+
+        {/* Selectors */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div>
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">Occasion</label>
@@ -112,7 +132,7 @@ const OutfitGenerator = () => {
         <div className="flex justify-center gap-3 mb-10">
           <Button
             onClick={generate}
-            disabled={!occasion || !season || loading}
+            disabled={!gender || !occasion || !season || loading}
             className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-8"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}

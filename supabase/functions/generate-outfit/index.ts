@@ -9,11 +9,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { occasion, season, palette, vibe } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const { occasion, season, palette, vibe, gender } = await req.json();
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
 
-    const prompt = `Generate a complete outfit recommendation for the following:
+    const genderLabel = gender === "male" ? "men's" : "women's";
+
+    const prompt = `Generate a complete ${genderLabel} outfit recommendation for the following:
 - Occasion: ${occasion}
 - Season: ${season}
 ${palette ? `- Color Palette: ${palette}` : ""}
@@ -29,17 +31,17 @@ Provide:
 3. **Styling Tips**: 2-3 tips for pulling it together
 4. **Alternatives**: 1-2 swap options
 
-Use markdown formatting. Be specific with colors, materials, and brands where appropriate.`;
+Use markdown formatting. Be specific with colors, materials, and brands where appropriate. Tailor all items specifically for ${genderLabel} fashion.`;
 
-    // Generate text recommendation
-    const textResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Generate text recommendation via OpenRouter
+    const textResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "arcee-ai/trinity-large-preview:free",
         messages: [
           { role: "system", content: "You are StyleSense, an expert AI fashion stylist. Provide detailed, specific outfit recommendations with rich formatting." },
           { role: "user", content: prompt },
@@ -60,27 +62,30 @@ Use markdown formatting. Be specific with colors, materials, and brands where ap
     const textData = await textResponse.json();
     const text = textData.choices?.[0]?.message?.content || "Unable to generate outfit.";
 
-    // Generate mood board image
+    // Generate mood board image via Lovable AI
     let imageUrl: string | undefined;
     try {
-      const imagePrompt = `Fashion flat-lay mood board for a ${vibe || "stylish"} ${occasion} outfit for ${season}. ${palette ? `Color palette: ${palette}.` : ""} Editorial fashion photography, elegant arrangement on cream background, high-end fashion items, accessories, and textures. Ultra high resolution.`;
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (LOVABLE_API_KEY) {
+        const imagePrompt = `Fashion flat-lay mood board for a ${vibe || "stylish"} ${genderLabel} ${occasion} outfit for ${season}. ${palette ? `Color palette: ${palette}.` : ""} Editorial fashion photography, elegant arrangement on cream background, high-end ${genderLabel} fashion items, accessories, and textures. Ultra high resolution.`;
 
-      const imageResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image",
-          messages: [{ role: "user", content: imagePrompt }],
-          modalities: ["image", "text"],
-        }),
-      });
+        const imageResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-image",
+            messages: [{ role: "user", content: imagePrompt }],
+            modalities: ["image", "text"],
+          }),
+        });
 
-      if (imageResponse.ok) {
-        const imageData = await imageResponse.json();
-        imageUrl = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        if (imageResponse.ok) {
+          const imageData = await imageResponse.json();
+          imageUrl = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        }
       }
     } catch (imgErr) {
       console.error("Image generation error:", imgErr);
