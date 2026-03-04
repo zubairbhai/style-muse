@@ -168,13 +168,14 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
 // ─── HF Model calls ─────────────────────────────────────────────────
 
 async function detectObjects(imageBytes: Uint8Array, token: string) {
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/facebook/detr-resnet-50`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) {
     const text = await response.text();
