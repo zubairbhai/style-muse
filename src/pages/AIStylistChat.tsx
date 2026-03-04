@@ -277,57 +277,90 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
   // ─── Product Search ────────────────────────────────────────────────
 
   const extractSearchQueries = (recommendation: string): string[] => {
-    // Extract specific clothing items from the recommendation text
     const queries: string[] = [];
-
-    // Pattern: Look for bold items like **Slim Fit Blazer** or specific clothing mentions
-    const boldItemRegex = /\*\*([^*]+)\*\*/g;
-    const matches = recommendation.matchAll(boldItemRegex);
 
     const clothingKeywords = [
       "blazer", "shirt", "t-shirt", "tee", "jacket", "coat", "hoodie", "sweater",
       "trousers", "pants", "jeans", "shorts", "chinos", "joggers",
-      "shoes", "sneakers", "boots", "loafers", "sandals", "heels",
+      "shoes", "sneakers", "boots", "loafers", "sandals", "heels", "oxford",
       "dress", "skirt", "top", "blouse", "cardigan", "vest",
       "watch", "sunglasses", "belt", "bag", "cap", "hat", "scarf",
-      "polo", "kurta", "lehenga", "saree", "suit",
+      "polo", "kurta", "lehenga", "saree", "suit", "overcoat",
+      "pullover", "henley", "sweatshirt", "denim", "leather",
+      "chino", "khaki", "linen", "cotton", "wool", "silk",
     ];
 
-    for (const match of matches) {
-      const item = match[1].trim().toLowerCase();
-      if (clothingKeywords.some((kw) => item.includes(kw)) && item.length < 60) {
-        queries.push(match[1].trim());
+    // 1. Extract from **bold text** (most common in AI output)
+    const boldItemRegex = /\*\*([^*]+)\*\*/g;
+    for (const match of recommendation.matchAll(boldItemRegex)) {
+      const item = match[1].trim();
+      if (clothingKeywords.some((kw) => item.toLowerCase().includes(kw)) && item.length < 60) {
+        queries.push(item);
       }
     }
 
-    // If no bold items found, try to extract from bullet points
+    // 2. Extract from bullet / list items (- item, • item, * item, numbered lists)
     if (queries.length === 0) {
-      const bulletRegex = /[-•]\s*(.+?)(?:\n|$)/g;
-      const bulletMatches = recommendation.matchAll(bulletRegex);
-      for (const match of bulletMatches) {
-        const item = match[1].trim().toLowerCase();
-        if (clothingKeywords.some((kw) => item.includes(kw)) && item.length < 80) {
-          queries.push(match[1].trim().replace(/[*_`]/g, ""));
+      const bulletRegex = /(?:^|\n)\s*(?:[-•*]|\d+[.)]) ?(.+?)(?:\n|$)/g;
+      for (const match of recommendation.matchAll(bulletRegex)) {
+        const item = match[1].trim().replace(/[*_`]/g, "");
+        if (clothingKeywords.some((kw) => item.toLowerCase().includes(kw)) && item.length < 80) {
+          queries.push(item);
+        }
+      }
+    }
+
+    // 3. Extract from "Label: item" or "Label — item" patterns (common in structured AI output)
+    if (queries.length === 0) {
+      const colonRegex = /(?:top|bottom|shoes|footwear|accessory|accessories|shirt|outerwear)[:\s—-]+(.+?)(?:\n|$)/gi;
+      for (const match of recommendation.matchAll(colonRegex)) {
+        const item = match[1].trim().replace(/[*_`]/g, "");
+        if (item.length > 3 && item.length < 80) {
+          queries.push(item);
+        }
+      }
+    }
+
+    // 4. Scan entire text for clothing keyword phrases
+    if (queries.length === 0) {
+      const sentenceRegex = /(?:^|[.!?\n])\s*([^.!?\n]*?(?:blazer|shirt|jacket|coat|trousers|pants|jeans|shoes|sneakers|boots|dress|skirt|sweater|hoodie|cardigan|kurta|suit)[^.!?\n]*)/gi;
+      for (const match of recommendation.matchAll(sentenceRegex)) {
+        const phrase = match[1].trim().replace(/[*_`#]/g, "");
+        // Extract just the item part — take first 5-6 words around the keyword
+        const words = phrase.split(/\s+/);
+        if (words.length <= 8 && phrase.length < 80) {
+          queries.push(phrase);
+        } else {
+          // Find the keyword and grab surrounding words
+          const kwIdx = words.findIndex(w => clothingKeywords.some(kw => w.toLowerCase().includes(kw)));
+          if (kwIdx >= 0) {
+            const start = Math.max(0, kwIdx - 2);
+            const end = Math.min(words.length, kwIdx + 4);
+            queries.push(words.slice(start, end).join(" "));
+          }
         }
       }
     }
 
     // Deduplicate and limit to 5
-    const unique = [...new Set(queries)].slice(0, 5);
+    const unique = [...new Set(queries.map(q => q.replace(/\s+/g, " ").trim()))]
+      .filter(q => q.length > 3)
+      .slice(0, 5);
 
-    // If still nothing, create a generic query from the recommendation
+    // 5. Last resort: generic query from any clothing words found
     if (unique.length === 0) {
-      const words = recommendation.slice(0, 200).replace(/[#*_\n]/g, " ").split(/\s+/);
+      const words = recommendation.replace(/[#*_\n]/g, " ").split(/\s+/);
       const clothingFound = words.filter((w) =>
-        clothingKeywords.some((kw) => w.toLowerCase().includes(kw))
+        clothingKeywords.some((kw) => w.toLowerCase().includes(kw) && w.length > 3)
       ).slice(0, 3);
       if (clothingFound.length > 0) {
         unique.push(clothingFound.join(" ") + " fashion");
       } else {
-        unique.push("men fashion outfit");
+        unique.push("fashion outfit clothing");
       }
     }
 
+    console.log("[ProductSearch] Extracted queries:", unique);
     return unique;
   };
 
@@ -347,15 +380,20 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
       body: JSON.stringify({ action: "search-products", query, limit: 5 }),
     });
 
+    const data = await resp.json();
+
     if (!resp.ok) {
-      throw new Error("Product search failed");
+      const errorMsg = data?.error || "Product search failed";
+      console.error("[ProductSearch] API error:", resp.status, errorMsg);
+      throw new Error(errorMsg);
     }
 
-    const data = await resp.json();
     const products: Product[] = data.products || [];
 
     // Cache the results
-    productCache.set(cacheKey, products);
+    if (products.length > 0) {
+      productCache.set(cacheKey, products);
+    }
 
     return products;
   };
@@ -377,16 +415,35 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
     ]);
 
     try {
-      const queries = extractSearchQueries(lastRecommendation);
+      // Use lastRecommendation, or fallback to the latest assistant message content
+      let recommendationText = lastRecommendation;
+      if (!recommendationText || recommendationText.trim().length < 20) {
+        // Fallback: find the last non-empty assistant message that has actual recommendation text
+        const assistantMsgs = messages.filter(
+          (m) => m.role === "assistant" && m.content && !m.productPrompt && !m.productsLoading && !m.analysisCard && m.content.length > 50
+        );
+        if (assistantMsgs.length > 0) {
+          recommendationText = assistantMsgs[assistantMsgs.length - 1].content;
+        }
+      }
+
+      console.log("[ProductSearch] Recommendation text length:", recommendationText.length);
+      console.log("[ProductSearch] First 200 chars:", recommendationText.slice(0, 200));
+
+      const queries = extractSearchQueries(recommendationText);
       let allProducts: Product[] = [];
+      let lastError = "";
 
       // Fetch products for each extracted query
       for (const query of queries.slice(0, 3)) {
         try {
+          console.log("[ProductSearch] Fetching products for:", query);
           const products = await fetchProducts(query);
+          console.log("[ProductSearch] Got", products.length, "results for:", query);
           allProducts = [...allProducts, ...products];
         } catch (e) {
-          console.error("Product search failed for query:", query, e);
+          lastError = e instanceof Error ? e.message : "Unknown error";
+          console.error("[ProductSearch] Failed for query:", query, e);
         }
       }
 
@@ -402,11 +459,14 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
       setMessages((prev) => {
         const filtered = prev.filter((m) => !m.productsLoading);
         if (uniqueProducts.length === 0) {
+          const errorHint = lastError
+            ? `\n\n_Error: ${lastError}_`
+            : "";
           return [
             ...filtered,
             {
               role: "assistant" as const,
-              content: "😔 No matching products found. Try refining your style or asking for different recommendations!",
+              content: `😔 No matching products found. The product search service may be temporarily unavailable.${errorHint}\n\nYou can try searching for the recommended items directly on your favorite shopping site! 🛍️`,
             },
           ];
         }
@@ -420,7 +480,7 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
         ];
       });
     } catch (e) {
-      console.error("Product fetch error:", e);
+      console.error("[ProductSearch] Fatal error:", e);
       setMessages((prev) => {
         const filtered = prev.filter((m) => !m.productsLoading);
         return [
@@ -614,9 +674,9 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
       a.outfit.forEach((item, idx) => {
         const emoji = item.zone?.toLowerCase().includes("outer") || item.zone?.toLowerCase().includes("top")
           ? "🧥" : item.zone?.toLowerCase().includes("shirt") || item.zone?.toLowerCase().includes("mid")
-          ? "👕" : item.zone?.toLowerCase().includes("bottom")
-          ? "👖" : item.zone?.toLowerCase().includes("foot")
-          ? "👢" : "👔";
+            ? "👕" : item.zone?.toLowerCase().includes("bottom")
+              ? "👖" : item.zone?.toLowerCase().includes("foot")
+                ? "👢" : "👔";
         md += `### ${emoji} ${idx + 1}. ${item.zone || "Clothing Item"}\n\n`;
         md += `| Detail | Value |\n|---|---|\n`;
         md += `| **Item** | ${item.type} |\n`;
@@ -638,18 +698,32 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
       md += "\n";
     }
 
-    // Color palette
+    // Color palette (human-readable)
     if (a.color_palette) {
       md += `### 🎨 Color Palette\n\n`;
-      md += "```json\n";
-      md += JSON.stringify(a.color_palette, null, 2);
-      md += "\n```\n\n";
+      md += `| Aspect | Details |\n|---|---|\n`;
+      if (a.color_palette.primary_colors.length > 0 && a.color_palette.primary_colors[0] !== "not clearly detected") {
+        md += `| **Primary Colors** | ${a.color_palette.primary_colors.join(", ")} |\n`;
+      }
+      if (a.color_palette.secondary_colors.length > 0) {
+        md += `| **Secondary Colors** | ${a.color_palette.secondary_colors.join(", ")} |\n`;
+      }
+      if (a.color_palette.neutrals.length > 0) {
+        md += `| **Neutrals** | ${a.color_palette.neutrals.join(", ")} |\n`;
+      }
+      if (a.color_palette.color_temperature) {
+        md += `| **Temperature** | ${a.color_palette.color_temperature} |\n`;
+      }
+      if (a.color_palette.contrast_level) {
+        md += `| **Contrast** | ${a.color_palette.contrast_level} |\n`;
+      }
+      md += "\n";
     }
 
-    // Style tags
+    // Style tags (human-readable)
     if (a.style_tags && a.style_tags.length > 0) {
       md += `### 🏷 Style Tags\n\n`;
-      md += a.style_tags.map(t => `\`${t}\``).join("  ") + "\n\n";
+      md += `> ${a.style_tags.join(" · ")}\n\n`;
     }
 
     return md;

@@ -29,7 +29,7 @@ async function handleProductSearch(query: string, limit: number): Promise<Respon
     );
   }
 
-  const url = new URL("https://real-time-product-search.p.rapidapi.com/search");
+  const url = new URL("https://real-time-product-search.p.rapidapi.com/search-v2");
   url.searchParams.set("q", query.trim());
   url.searchParams.set("country", "in");
   url.searchParams.set("language", "en");

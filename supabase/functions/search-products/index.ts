@@ -41,7 +41,7 @@ serve(async (req) => {
         }
 
         const searchQuery = query.trim();
-        const url = new URL("https://real-time-product-search.p.rapidapi.com/search");
+        const url = new URL("https://real-time-product-search.p.rapidapi.com/search-v2");
         url.searchParams.set("q", searchQuery);
         url.searchParams.set("country", "in");
         url.searchParams.set("language", "en");
