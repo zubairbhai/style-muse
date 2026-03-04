@@ -222,14 +222,14 @@ async function segmentImage(imageBytes: Uint8Array, token: string) {
 }
 
 async function detectFaces(imageBytes: Uint8Array, token: string) {
-  // Use a face detection model to find face region for skin tone extraction
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/google/vit-base-patch16-224`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) return null;
   return await response.json();
