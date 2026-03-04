@@ -204,13 +204,14 @@ async function classifyImage(imageBytes: Uint8Array, token: string) {
 }
 
 async function segmentImage(imageBytes: Uint8Array, token: string) {
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/mattmdjaga/segformer_b2_clothes`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) {
     const text = await response.text();
