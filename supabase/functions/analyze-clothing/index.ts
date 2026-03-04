@@ -186,13 +186,14 @@ async function detectObjects(imageBytes: Uint8Array, token: string) {
 }
 
 async function classifyImage(imageBytes: Uint8Array, token: string) {
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/google/vit-base-patch16-224`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) {
     const text = await response.text();
