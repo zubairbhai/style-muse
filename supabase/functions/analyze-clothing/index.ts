@@ -168,13 +168,14 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
 // ─── HF Model calls ─────────────────────────────────────────────────
 
 async function detectObjects(imageBytes: Uint8Array, token: string) {
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/facebook/detr-resnet-50`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -185,13 +186,14 @@ async function detectObjects(imageBytes: Uint8Array, token: string) {
 }
 
 async function classifyImage(imageBytes: Uint8Array, token: string) {
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/google/vit-base-patch16-224`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -202,13 +204,14 @@ async function classifyImage(imageBytes: Uint8Array, token: string) {
 }
 
 async function segmentImage(imageBytes: Uint8Array, token: string) {
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/mattmdjaga/segformer_b2_clothes`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -219,14 +222,14 @@ async function segmentImage(imageBytes: Uint8Array, token: string) {
 }
 
 async function detectFaces(imageBytes: Uint8Array, token: string) {
-  // Use a face detection model to find face region for skin tone extraction
+  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
   const response = await fetch(`${HF_API_URL}/google/vit-base-patch16-224`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: imageBytes,
+    body: blob,
   });
   if (!response.ok) return null;
   return await response.json();

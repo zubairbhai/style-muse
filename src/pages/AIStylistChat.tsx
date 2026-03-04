@@ -10,14 +10,10 @@ import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  extractSkinTone,
-  extractRegionColor,
-  buildStructuredAnalysis,
+  runFullClientAnalysis,
   OCCASION_OPTIONS,
-  type RawAnalysis,
   type StructuredAnalysis,
   type UserIntent,
-  type SkinTone,
 } from "@/lib/imageAnalysis";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -52,7 +48,6 @@ type AnalysisPhase =
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-const ANALYZE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-clothing`;
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stylist-chat`;
 const PRODUCTS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-outfit`;
 
@@ -107,63 +102,27 @@ const AIStylistChat = () => {
 
   // ─── Full Analysis Pipeline ────────────────────────────────────────
 
-  const runAnalysisPipeline = async (imageUrl: string, imageDataUrl: string) => {
+  const runAnalysisPipeline = async (_imageUrl: string, imageDataUrl: string) => {
     setAnalysisPhase("analyzing");
-    addMessage("assistant", "🔍 **Analyzing your outfit** using AI vision models...\n\n_Detecting clothing, body type, and accessories..._");
+    addMessage("assistant", "🔍 **Analyzing your outfit** — scanning zones, extracting colors, classifying style...\n\n_This runs 100% client-side — free & unlimited!_");
 
-    // Step 1: Call edge function for HF model analysis
-    const resp = await fetch(ANALYZE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify({ imageUrl }),
-    });
-
-    if (!resp.ok) throw new Error("Analysis failed");
-    let rawAnalysis: RawAnalysis;
-    try {
-      rawAnalysis = await resp.json();
-    } catch {
-      rawAnalysis = {
-        skin_tone: null,
-        body_type: "Unknown",
-        outfit: [],
-        accessories: [],
-        clothing_items: [],
-        object_detections: [],
-        style_classifications: [],
-        body_attributes: { person_detected: false, person_box: null },
-        raw_segmentation_labels: [],
-        has_face_region: false,
-        has_skin_region: false,
-      };
-    }
+    // Full client-side multi-zone analysis (no API calls needed)
+    const structured = await runFullClientAnalysis(imageDataUrl);
 
     setAnalysisPhase("extracting-colors");
-    updateLastAssistant("🎨 **Extracting colors and skin tone...**\n\n_Sampling face region and clothing colors..._");
+    updateLastAssistant("🎨 **Building your complete style profile...**\n\n_Classifying garments, detecting accessories, mapping color palette..._");
 
-    // Step 2: Client-side skin tone extraction
-    const skinTone: SkinTone = await extractSkinTone(
-      imageDataUrl,
-      rawAnalysis?.body_attributes?.person_box
-    );
-
-    // Step 3: Client-side dominant color extraction for clothing
-    const outfitColor = await extractRegionColor(imageDataUrl);
-
-    // Step 4: Build structured analysis
-    const structured = buildStructuredAnalysis(rawAnalysis, skinTone, [outfitColor]);
+    // Small delay for UX
+    await new Promise((r) => setTimeout(r, 400));
 
     setCurrentAnalysis(structured);
-    setCurrentImageUrl(imageUrl);
+    setCurrentImageUrl(_imageUrl);
     setAnalysisPhase("results");
 
-    // Replace the loading message with analysis results
+    // Replace loading message with rich analysis
     setMessages((prev) => {
       const filtered = prev.filter(
-        (m) => !(m.role === "assistant" && (m.content.includes("Analyzing") || m.content.includes("Extracting")))
+        (m) => !(m.role === "assistant" && (m.content.includes("Analyzing") || m.content.includes("Building")))
       );
       return [
         ...filtered,
@@ -175,7 +134,6 @@ const AIStylistChat = () => {
       ];
     });
 
-    // After a brief moment, show the intent question
     setTimeout(() => {
       setAnalysisPhase("asking-intent");
       addMessage("assistant", "");
@@ -637,21 +595,61 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
   };
 
   const formatAnalysisResults = (a: StructuredAnalysis): string => {
-    let md = `## 🔬 Analysis Complete\n\n`;
+    let md = `## 🔍 High-Level Outfit Summary\n\n`;
     md += `| Attribute | Detected |\n|---|---|\n`;
+    if (a.outfit_type) md += `| 👔 **Outfit Type** | ${a.outfit_type} |\n`;
+    if (a.gender_expression) md += `| 👤 **Fit Expression** | ${a.gender_expression} |\n`;
+    if (a.season) md += `| 🍂 **Season** | ${a.season} |\n`;
+    if (a.style_vibe) md += `| ✨ **Style Vibe** | ${a.style_vibe} |\n`;
+    if (a.color_strategy) md += `| 🎯 **Color Strategy** | ${a.color_strategy} |\n`;
     md += `| 🎨 **Skin Tone** | ${a.skin_tone.category} \`${a.skin_tone.hex}\` |\n`;
     md += `| 🏋️ **Body Type** | ${a.body_type} |\n`;
+    if (a.layering_level) md += `| 🧅 **Layering** | ${a.layering_level} |\n`;
+    if (a.formality_score) md += `| 📐 **Formality** | ${a.formality_score}/10 |\n`;
+    if (a.boldness_score) md += `| 🔥 **Boldness** | ${a.boldness_score}/10 |\n`;
+    md += "\n";
 
+    // Individual garment breakdown
     if (a.outfit.length > 0) {
-      md += `\n### 👕 Outfit Items\n`;
-      for (const item of a.outfit) {
-        md += `- **${item.type}** — ${item.dominant_color} \`${item.hex}\`\n`;
-      }
+      a.outfit.forEach((item, idx) => {
+        const emoji = item.zone?.toLowerCase().includes("outer") || item.zone?.toLowerCase().includes("top")
+          ? "🧥" : item.zone?.toLowerCase().includes("shirt") || item.zone?.toLowerCase().includes("mid")
+          ? "👕" : item.zone?.toLowerCase().includes("bottom")
+          ? "👖" : item.zone?.toLowerCase().includes("foot")
+          ? "👢" : "👔";
+        md += `### ${emoji} ${idx + 1}. ${item.zone || "Clothing Item"}\n\n`;
+        md += `| Detail | Value |\n|---|---|\n`;
+        md += `| **Item** | ${item.type} |\n`;
+        md += `| **Primary Color** | ${item.dominant_color} \`${item.hex}\` |\n`;
+        if (item.fit) md += `| **Fit** | ${item.fit} |\n`;
+        if (item.material_guess) md += `| **Material (Est.)** | ${item.material_guess} |\n`;
+        if (item.confidence) md += `| **Confidence** | ${Math.round(item.confidence * 100)}% |\n`;
+        md += "\n";
+        if (item.description) md += `> ${item.description}\n\n`;
+      });
     }
 
+    // Accessories
     if (a.accessories.length > 0) {
-      md += `\n### ⌚ Accessories Detected\n`;
-      md += a.accessories.map((acc) => `- ${acc}`).join("\n") + "\n";
+      md += `### 🧣 Accessories\n\n`;
+      for (const acc of a.accessories) {
+        md += `- ${acc}\n`;
+      }
+      md += "\n";
+    }
+
+    // Color palette
+    if (a.color_palette) {
+      md += `### 🎨 Color Palette\n\n`;
+      md += "```json\n";
+      md += JSON.stringify(a.color_palette, null, 2);
+      md += "\n```\n\n";
+    }
+
+    // Style tags
+    if (a.style_tags && a.style_tags.length > 0) {
+      md += `### 🏷 Style Tags\n\n`;
+      md += a.style_tags.map(t => `\`${t}\``).join("  ") + "\n\n";
     }
 
     return md;
