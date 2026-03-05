@@ -191,7 +191,7 @@ async function classifyImage(imageBytes: ArrayBuffer, token: string) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: blob,
+    body: imageBytes,
   });
   if (!response.ok) {
     const text = await response.text();
