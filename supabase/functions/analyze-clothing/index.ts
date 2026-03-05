@@ -167,15 +167,14 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
 
 // ─── HF Model calls ─────────────────────────────────────────────────
 
-async function detectObjects(imageBytes: Uint8Array, token: string) {
-  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
+async function detectObjects(imageBytes: ArrayBuffer, token: string) {
   const response = await fetch(`${HF_API_URL}/facebook/detr-resnet-50`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: blob,
+    body: imageBytes,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -185,15 +184,14 @@ async function detectObjects(imageBytes: Uint8Array, token: string) {
   return await response.json();
 }
 
-async function classifyImage(imageBytes: Uint8Array, token: string) {
-  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
+async function classifyImage(imageBytes: ArrayBuffer, token: string) {
   const response = await fetch(`${HF_API_URL}/google/vit-base-patch16-224`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: blob,
+    body: imageBytes,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -203,15 +201,14 @@ async function classifyImage(imageBytes: Uint8Array, token: string) {
   return await response.json();
 }
 
-async function segmentImage(imageBytes: Uint8Array, token: string) {
-  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
+async function segmentImage(imageBytes: ArrayBuffer, token: string) {
   const response = await fetch(`${HF_API_URL}/mattmdjaga/segformer_b2_clothes`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: blob,
+    body: imageBytes,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -221,15 +218,14 @@ async function segmentImage(imageBytes: Uint8Array, token: string) {
   return await response.json();
 }
 
-async function detectFaces(imageBytes: Uint8Array, token: string) {
-  const blob = new Blob([imageBytes], { type: "application/octet-stream" });
+async function detectFaces(imageBytes: ArrayBuffer, token: string) {
   const response = await fetch(`${HF_API_URL}/google/vit-base-patch16-224`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/octet-stream",
     },
-    body: blob,
+    body: imageBytes,
   });
   if (!response.ok) return null;
   return await response.json();
@@ -284,7 +280,7 @@ serve(async (req) => {
     // Fetch the image as bytes
     const imgResp = await fetch(imageUrl);
     if (!imgResp.ok) throw new Error("Failed to fetch image");
-    const imageBytes = new Uint8Array(await imgResp.arrayBuffer());
+    const imageBytes = await imgResp.arrayBuffer();
 
     // Run detection, classification, and segmentation in parallel
     const [detections, classifications, segmentation] = await Promise.all([

@@ -21,88 +21,99 @@ interface Product {
 }
 
 async function handleProductSearch(query: string, limit: number): Promise<Response> {
+  // Clean up query - remove numbered prefixes like "1. The Top:" 
+  const cleanQuery = query
+    .replace(/^\d+\.\s*/, "")
+    .replace(/^The\s+\w+:\s*/i, "")
+    .trim();
+
+  console.log("Searching products (cleaned):", cleanQuery);
+
+  // Generate Google Shopping search links as reliable product results
+  const searchUrl = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(cleanQuery)}`;
+  
+  // Try RapidAPI first, fall back to Google Shopping links
   const RAPIDAPI_KEY = Deno.env.get("RAPIDAPI_KEY");
-  if (!RAPIDAPI_KEY) {
-    return new Response(
-      JSON.stringify({ error: "RAPIDAPI_KEY is not configured", products: [] }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
+  
+  if (RAPIDAPI_KEY) {
+    try {
+      const url = new URL("https://real-time-product-search.p.rapidapi.com/search");
+      url.searchParams.set("q", cleanQuery);
+      url.searchParams.set("country", "in");
+      url.searchParams.set("language", "en");
+      url.searchParams.set("limit", String(Math.min(limit, 10)));
 
-  const url = new URL("https://real-time-product-search.p.rapidapi.com/search-v2");
-  url.searchParams.set("q", query.trim());
-  url.searchParams.set("country", "in");
-  url.searchParams.set("language", "en");
-  url.searchParams.set("page", "1");
-  url.searchParams.set("limit", String(Math.min(limit, 10)));
-  url.searchParams.set("sort_by", "BEST_MATCH");
-  url.searchParams.set("product_condition", "ANY");
-
-  console.log("Searching products:", query);
-
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      "x-rapidapi-host": "real-time-product-search.p.rapidapi.com",
-      "x-rapidapi-key": RAPIDAPI_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    console.error("RapidAPI error:", response.status, text);
-
-    if (response.status === 429) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded", products: [] }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    return new Response(
-      JSON.stringify({ error: "Product search failed", products: [] }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-  const data = await response.json();
-  const rawProducts = data?.data || data?.products || [];
-
-  const products: Product[] = [];
-  for (const item of rawProducts) {
-    if (products.length >= limit) break;
-
-    const title = item.product_title || item.title || "";
-    const price =
-      item.offer?.price ||
-      item.product_price ||
-      item.price ||
-      item.typical_price_range?.[0] ||
-      "";
-    const image =
-      item.product_photos?.[0] ||
-      item.product_photo ||
-      item.thumbnail ||
-      item.image ||
-      "";
-    const link =
-      item.product_page_url ||
-      item.product_url ||
-      item.link ||
-      item.url ||
-      "";
-
-    if (title && link) {
-      products.push({
-        title: title.length > 100 ? title.slice(0, 97) + "..." : title,
-        price: typeof price === "string" ? price : price ? `₹${price}` : "Price not available",
-        image,
-        link,
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          "x-rapidapi-host": "real-time-product-search.p.rapidapi.com",
+          "x-rapidapi-key": RAPIDAPI_KEY,
+        },
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawProducts = data?.data || data?.products || [];
+
+        const products: Product[] = [];
+        for (const item of rawProducts) {
+          if (products.length >= limit) break;
+
+          const title = item.product_title || item.title || "";
+          const price =
+            item.offer?.price ||
+            item.product_price ||
+            item.price ||
+            item.typical_price_range?.[0] ||
+            "";
+          const image =
+            item.product_photos?.[0] ||
+            item.product_photo ||
+            item.thumbnail ||
+            item.image ||
+            "";
+          const link =
+            item.product_page_url ||
+            item.product_url ||
+            item.link ||
+            item.url ||
+            "";
+
+          if (title && link) {
+            products.push({
+              title: title.length > 100 ? title.slice(0, 97) + "..." : title,
+              price: typeof price === "string" ? price : price ? `₹${price}` : "Price not available",
+              image,
+              link,
+            });
+          }
+        }
+
+        if (products.length > 0) {
+          return new Response(
+            JSON.stringify({ products, query: cleanQuery }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else {
+        const text = await response.text();
+        console.error("RapidAPI error:", response.status, text);
+      }
+    } catch (e) {
+      console.error("RapidAPI call failed:", e);
     }
   }
+
+  // Fallback: return a Google Shopping link so the user can still find products
+  const fallbackProducts: Product[] = [{
+    title: `Shop: ${cleanQuery}`,
+    price: "Browse results",
+    image: "",
+    link: searchUrl,
+  }];
 
   return new Response(
-    JSON.stringify({ products, query }),
+    JSON.stringify({ products: fallbackProducts, query: cleanQuery }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
