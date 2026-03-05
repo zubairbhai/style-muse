@@ -278,87 +278,87 @@ Format with clear sections, bullet points, and specific item/color suggestions. 
 
   const extractSearchQueries = (recommendation: string): string[] => {
     const queries: string[] = [];
+    const clean = (s: string) => s.replace(/[*_`#]/g, "").replace(/\s+/g, " ").trim();
 
-    const clothingKeywords = [
+    // Clothing keywords for validation
+    const clothingKW = [
       "blazer", "shirt", "t-shirt", "tee", "jacket", "coat", "hoodie", "sweater",
-      "trousers", "pants", "jeans", "shorts", "chinos", "joggers",
+      "trousers", "pants", "jeans", "shorts", "chinos", "joggers", "polo",
       "shoes", "sneakers", "boots", "loafers", "sandals", "heels", "oxford",
-      "dress", "skirt", "top", "blouse", "cardigan", "vest",
+      "dress", "skirt", "top", "blouse", "cardigan", "vest", "kurta", "saree",
       "watch", "sunglasses", "belt", "bag", "cap", "hat", "scarf",
-      "polo", "kurta", "lehenga", "saree", "suit", "overcoat",
-      "pullover", "henley", "sweatshirt", "denim", "leather",
-      "chino", "khaki", "linen", "cotton", "wool", "silk",
+      "suit", "overcoat", "pullover", "henley", "sweatshirt",
     ];
+    const isClothing = (s: string) => clothingKW.some((kw) => s.toLowerCase().includes(kw));
 
-    // 1. Extract from **bold text** (most common in AI output)
-    const boldItemRegex = /\*\*([^*]+)\*\*/g;
-    for (const match of recommendation.matchAll(boldItemRegex)) {
-      const item = match[1].trim();
-      if (clothingKeywords.some((kw) => item.toLowerCase().includes(kw)) && item.length < 60) {
+    // Strategy 1: "Category: **specific item description**" pattern
+    // e.g. "**Top:** A slim-fit navy blue linen shirt" or "- **Shoes**: White leather sneakers"
+    const categoryItemRegex = /\*\*\s*(?:top|bottom|shirt|pants|trousers|shoes|footwear|outerwear|jacket|coat|accessories?|belt|bag|watch|scarf|dress|skirt)\s*[:—-]\s*\*\*\s*(.+?)(?:\n|$)/gi;
+    for (const match of recommendation.matchAll(categoryItemRegex)) {
+      const item = clean(match[1]);
+      if (item.length > 3 && item.length < 80) queries.push(item);
+    }
+
+    // Strategy 2: Bullet points with category labels
+    // e.g. "- Top: Navy blue cotton polo shirt" or "* Shoes — Brown suede loafers"
+    const bulletCategoryRegex = /(?:^|\n)\s*(?:[-•*]|\d+[.)])\s*(?:top|bottom|shirt|pants|trousers|shoes|footwear|outerwear|jacket|coat|accessories?|belt|bag|watch|scarf|dress|skirt)\s*[:—-]\s*(.+?)(?:\n|$)/gi;
+    for (const match of recommendation.matchAll(bulletCategoryRegex)) {
+      const item = clean(match[1]);
+      if (item.length > 3 && item.length < 80 && isClothing(item)) queries.push(item);
+    }
+
+    // Strategy 3: Bold items that contain color + clothing keyword
+    // e.g. "**navy blue linen shirt**" or "**brown leather boots**"
+    const colorClothingBold = /\*\*([^*]{5,60})\*\*/g;
+    for (const match of recommendation.matchAll(colorClothingBold)) {
+      const item = clean(match[1]);
+      if (isClothing(item) && !item.includes(":") && item.split(" ").length >= 2 && item.split(" ").length <= 8) {
         queries.push(item);
       }
     }
 
-    // 2. Extract from bullet / list items (- item, • item, * item, numbered lists)
-    if (queries.length === 0) {
-      const bulletRegex = /(?:^|\n)\s*(?:[-•*]|\d+[.)]) ?(.+?)(?:\n|$)/g;
-      for (const match of recommendation.matchAll(bulletRegex)) {
-        const item = match[1].trim().replace(/[*_`]/g, "");
-        if (clothingKeywords.some((kw) => item.toLowerCase().includes(kw)) && item.length < 80) {
-          queries.push(item);
-        }
-      }
+    // Strategy 4: Lines starting with clothing-related headers followed by description
+    // e.g. "Shirt: Opt for a crisp white cotton shirt"  
+    const headerDescRegex = /(?:^|\n)\s*(?:top|bottom|shirt|pants|trousers|shoes|footwear|outerwear|jacket|coat|accessories?|belt|bag|watch|scarf|dress|skirt)\s*[:—]\s*(?:opt for |go with |choose |try |wear |consider |a )?\s*(.+?)(?:\.|,|\n|$)/gi;
+    for (const match of recommendation.matchAll(headerDescRegex)) {
+      const item = clean(match[1]);
+      // Take only the core item description (first 6 words max)
+      const words = item.split(" ").slice(0, 6).join(" ");
+      if (words.length > 3 && isClothing(words)) queries.push(words);
     }
 
-    // 3. Extract from "Label: item" or "Label — item" patterns (common in structured AI output)
-    if (queries.length === 0) {
-      const colonRegex = /(?:top|bottom|shoes|footwear|accessory|accessories|shirt|outerwear)[:\s—-]+(.+?)(?:\n|$)/gi;
-      for (const match of recommendation.matchAll(colonRegex)) {
-        const item = match[1].trim().replace(/[*_`]/g, "");
-        if (item.length > 3 && item.length < 80) {
-          queries.push(item);
-        }
+    // Deduplicate: normalize and remove near-duplicates
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const q of queries) {
+      const norm = q.toLowerCase().replace(/\s+/g, " ").trim();
+      // Skip if we already have a very similar query
+      const isDupe = [...seen].some((s) => {
+        return s.includes(norm) || norm.includes(s) || 
+               (norm.split(" ").length > 1 && s.split(" ").slice(-1)[0] === norm.split(" ").slice(-1)[0]);
+      });
+      if (!isDupe && norm.length > 3) {
+        seen.add(norm);
+        unique.push(q);
       }
+      if (unique.length >= 5) break;
     }
 
-    // 4. Scan entire text for clothing keyword phrases
-    if (queries.length === 0) {
-      const sentenceRegex = /(?:^|[.!?\n])\s*([^.!?\n]*?(?:blazer|shirt|jacket|coat|trousers|pants|jeans|shoes|sneakers|boots|dress|skirt|sweater|hoodie|cardigan|kurta|suit)[^.!?\n]*)/gi;
-      for (const match of recommendation.matchAll(sentenceRegex)) {
-        const phrase = match[1].trim().replace(/[*_`#]/g, "");
-        // Extract just the item part — take first 5-6 words around the keyword
-        const words = phrase.split(/\s+/);
-        if (words.length <= 8 && phrase.length < 80) {
-          queries.push(phrase);
-        } else {
-          // Find the keyword and grab surrounding words
-          const kwIdx = words.findIndex(w => clothingKeywords.some(kw => w.toLowerCase().includes(kw)));
-          if (kwIdx >= 0) {
-            const start = Math.max(0, kwIdx - 2);
-            const end = Math.min(words.length, kwIdx + 4);
-            queries.push(words.slice(start, end).join(" "));
-          }
-        }
-      }
-    }
-
-    // Deduplicate and limit to 5
-    const unique = [...new Set(queries.map(q => q.replace(/\s+/g, " ").trim()))]
-      .filter(q => q.length > 3)
-      .slice(0, 5);
-
-    // 5. Last resort: generic query from any clothing words found
+    // Last resort: scan for any clothing keyword with adjacent color/descriptor words
     if (unique.length === 0) {
-      const words = recommendation.replace(/[#*_\n]/g, " ").split(/\s+/);
-      const clothingFound = words.filter((w) =>
-        clothingKeywords.some((kw) => w.toLowerCase().includes(kw) && w.length > 3)
-      ).slice(0, 3);
-      if (clothingFound.length > 0) {
-        unique.push(clothingFound.join(" ") + " fashion");
-      } else {
-        unique.push("fashion outfit clothing");
+      const words = recommendation.replace(/[#*_`\n]/g, " ").split(/\s+/);
+      for (let i = 0; i < words.length && unique.length < 3; i++) {
+        const w = words[i].toLowerCase();
+        if (clothingKW.some((kw) => w.includes(kw) && w.length > 3)) {
+          const start = Math.max(0, i - 2);
+          const end = Math.min(words.length, i + 2);
+          const phrase = words.slice(start, end).join(" ");
+          if (phrase.length > 3) unique.push(clean(phrase));
+        }
       }
     }
+
+    if (unique.length === 0) unique.push("fashion outfit clothing");
 
     console.log("[ProductSearch] Extracted queries:", unique);
     return unique;
