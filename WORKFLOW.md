@@ -63,6 +63,7 @@ The product combines **client-side computer vision** (Canvas API + K-Means color
 | **Product Search API** | RapidAPI Real-Time Product Search |
 | **Fashion Articles** | Firecrawl Search API |
 | **Image Analysis (Client)** | Canvas API + K-Means Clustering (zero API cost) |
+| **Auth Background** | WebGL Neon Golden Wave Shader (GPU accelerated) |
 | **Markdown Rendering** | react-markdown |
 | **Theme** | next-themes (dark mode default) |
 
@@ -80,9 +81,15 @@ The product combines **client-side computer vision** (Canvas API + K-Means color
 │  │ React App  │  │ Canvas API  │  │  LocalStorage  │    │
 │  │ (Vite)     │  │ (K-Means)   │  │  (Quiz/Look-   │    │
 │  │            │  │             │  │   book data)   │    │
-│  └──────┬─────┘  └──────┬──────┘  └────────────────┘    │
-│         │               │                                │
-└─────────┼───────────────┼────────────────────────────────┘
+│  └──────┬─────┘  └──────┬──────┘  └──────┬─────────┘    │
+│         │               │                │              │
+│         ▼               ▼                ▼              │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │            AUTHENTICATION GATE (AuthGate)        │    │
+│  │        (Redirects unauthenticated → /auth)       │    │
+│  └──────────────────────┬───────────────────────────┘    │
+│                         │                                │
+└─────────────────────────┼────────────────────────────────┘
           │               │
           │  Client-side   │  100% free image analysis
           │  analysis      │  (no API calls)
@@ -846,37 +853,48 @@ A digital wardrobe where authenticated users can add, view, search, filter, favo
 
 ---
 
-### 3.9 Authentication & Profile
-
 #### Purpose
-Email/password authentication via Supabase Auth. Users can create accounts, sign in, and manage their profile (display name, bio, premium status).
+Email/password authentication via Supabase Auth. Authentication is implemented as a **Global Gate** — users must be signed in to access any part of the application. The login page serves as a high-end entry point with a WebGL animated background.
 
 #### Source
 
 | Layer | File | Description |
 |-------|------|-------------|
-| Frontend | `src/pages/Auth.tsx` | Login/signup form |
-| Frontend | `src/pages/Profile.tsx` | Profile management |
-| Auth | `src/hooks/useAuth.tsx` | Auth context (user, session, signOut) |
+| **Auth Gate** | `src/components/AuthGate.tsx` | Middleware component protecting all routes |
+| Frontend | `src/pages/Auth.tsx` | Login/signup form + WebGL Shader |
+| Background | `src/components/ui/shader-background.tsx` | WebGL Neon Golden Wave Shader |
+| Auth Hook | `src/hooks/useAuth.tsx` | Auth context (user, session, signOut) |
 | Database | Supabase table: `profiles` | User profile data |
 
 #### Workflow
 
+**The Auth Gate (Security Layer):**
+```
+1. User attempts to visit any route (e.g., /, /wardrobe, /generator)
+2. AuthGate.tsx checks current user session via useAuth()
+3. If no session is found:
+   - Redirects to /auth
+   - Navbar is hidden for a clean landing experience
+4. If session exists:
+   - Renders the requested page
+   - Navbar becomes visible
+```
+
 **Sign Up:**
 ```
 1. User visits /auth → sign up mode
-2. Enters: display name, email, password
-3. supabase.auth.signUp({ email, password, options: { data: { display_name } } })
-4. Email verification sent
-5. After verification → auto-login → redirect to /wardrobe
+2. Page renders the WebGL Golden Wave background behind a dark glass card
+3. User enters: display name, email, password
+4. supabase.auth.signUp({ email, password, options: { data: { display_name } } })
+5. Email verification sent
+6. After verification → auto-login → redirect to Home (/)
 ```
 
 **Sign In:**
 ```
 1. User visits /auth → login mode
-2. Enters: email, password
-3. supabase.auth.signInWithPassword({ email, password })
-4. Success → redirect to /wardrobe
+2. supabase.auth.signInWithPassword({ email, password })
+3. Success → redirect to Home (/)
 ```
 
 **Profile Management:**
